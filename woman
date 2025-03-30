@@ -1,0 +1,363 @@
+#!/usr/bin/env bash
+
+clear
+TTYD_PID_FILE=".ttyd_pids"
+
+# === Affichage coloré ===
+ok_msg() {
+  local msg="$1"
+  local cols=$(tput cols)
+  local color=$(tput setaf 2)
+  local reset=$(tput sgr0)
+  local padding=$((cols - ${#msg} - 7))
+  printf "$color*$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "ok$reset"
+  sleep 0.1
+}
+
+ok_msg_status() {
+  local msg="$1"
+  local port=$2
+  local cols=$(tput cols)
+  local color=$(tput setaf 2)
+  local reset=$(tput sgr0)
+  local padding=$((cols - ${#msg} - 8))
+  printf "$color~$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "$port$reset"
+  sleep 0.1
+}
+
+ko_msg() {
+  local msg="$1"
+  local cols=$(tput cols)
+  local color=$(tput setaf 1)
+  local reset=$(tput sgr0)
+  local padding=$((cols - ${#msg} - 7))
+  printf "$color!$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "ko$reset"
+  sleep 0.1
+}
+
+ko_msg_status() {
+  local msg="$1"
+  local port=$2
+  local cols=$(tput cols)
+  local color=$(tput setaf 1)
+  local reset=$(tput sgr0)
+  local padding=$((cols - ${#msg} - 8))
+  printf "$color~$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "$port$reset"
+  sleep 0.1
+}
+
+# === Définition des outils ===
+declare -A tools=(
+  [lazygit]=1492
+  [fmt]=1418
+  [ungit]=1989
+  [doc]=1939
+  [test]=1618
+  [clippy]=1789
+  [hack]=1453
+  [udeps]=1066
+  [audit]=1861
+  [deny]=1914
+  [outdated]=1187
+  [flamegraph]=1945
+)
+
+# === Détection des binaires requis ===
+require_bin() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    ko_msg "Missing: $1"
+    MISSING=1
+  else
+    ok_msg "$1 ok"
+  fi
+}
+
+echo
+echo
+MISSING=0
+for bin in cargo-hack cargo-udeps ttyd cargo cargo-watch cargo-audit cargo-deny lazygit broot ranger git code; do
+  require_bin "$bin"
+done
+
+# Check for screen or tmux based on selected backend
+require_bin screen
+require_bin tmux
+
+echo
+echo
+if [ "$MISSING" -eq 1 ]; then
+  ko_msg "Installation incomplète. Veuillez installer les outils manquants."
+  exit 1
+else
+  ok_msg "Tous les outils sont disponibles."
+fi
+
+attach_session() {
+  local name="$1"
+  if [ "$SESSION_BACKEND" = "tmux" ]; then
+    if tmux has-session -t "$name" 2>/dev/null; then
+      tmux attach -t "$name"
+    else
+      ko_msg "Session tmux '$name' introuvable"
+      exit 1
+    fi
+  else
+    if screen -list | grep -q "\.${name}[[:space:]]"; then
+      screen -r "$name"
+    else
+      ko_msg "Session screen '$name' introuvable"
+      exit 1
+    fi
+  fi
+}
+
+# === Sessions dynamiques (screen ou tmux) ===
+run_session() {
+  local name=$1
+  local cmd=$2
+
+  if [ "$SESSION_BACKEND" = "tmux" ]; then
+    if tmux has-session -t "$name" 2>/dev/null; then
+      ok_msg "Session '$name' déjà en cours. Ignorée."
+    else
+      ok_msg "Démarrage de la session tmux '$name'..."
+      tmux new-session -d -s "$name" "$cmd"
+    fi
+  else
+    if screen -list | grep -q "\.${name}[[:space:]]"; then
+      ok_msg "Session '$name' déjà en cours. Ignorée."
+    else
+      ok_msg "Démarrage de la session screen '$name'..."
+      screen -S "$name" -dm bash -c "$cmd; exec bash"
+    fi
+  fi
+}
+
+launch_ttyd() {
+  local name=$1
+  local port=$2
+  local attach_cmd
+
+  if [ "$SESSION_BACKEND" = "tmux" ]; then
+    attach_cmd="tmux attach -t $name"
+  else
+    attach_cmd="screen -r $name"
+  fi
+
+  ok_msg "Accès $name : http://localhost:$port"
+  nohup ttyd -p "$port" $attach_cmd >/dev/null 2>&1 &
+  echo $! >>"$TTYD_PID_FILE"
+}
+
+stop_sessions() {
+  ok_msg "Arrêt des sessions..."
+  for name in "${!tools[@]}"; do
+    if tmux has-session -t "$name" 2>/dev/null; then
+      tmux kill-session -t "$name"
+      ok_msg "Session tmux '$name' arrêtée."
+    fi
+    if screen -list | grep -q "\.${name}[[:space:]]"; then
+      screen -S "$name" -X quit
+      ok_msg "Session screen '$name' arrêtée."
+    fi
+  done
+
+  if [[ -f "$TTYD_PID_FILE" ]]; then
+    while read -r pid; do
+      if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid"
+        ok_msg "ttyd PID $pid arrêté."
+      fi
+    done <"$TTYD_PID_FILE"
+    rm -f "$TTYD_PID_FILE"
+  else
+    ko_msg "Aucun fichier PID ttyd trouvé."
+  fi
+
+  kill_ungit
+  echo
+  echo
+}
+
+kill_ungit() {
+  local pid
+  pid=$(pgrep -f "ungit --port ${tools[ungit]}")
+  if [[ -n "$pid" ]]; then
+    kill "$pid"
+    ok_msg "ungit arrêté (PID $pid)"
+  else
+    ok_msg "aucun processus ungit trouvé"
+  fi
+}
+
+get_cargo_command() {
+  case "$1" in
+  lazygit) echo 'lazygit' ;;
+  ungit) echo 'ungit --port 1989' ;;
+  doc) echo 'cargo-watch -- cargo doc --no-deps' ;;
+  test) echo 'cargo-watch -- cargo test -- --show-output' ;;
+  clippy) echo 'cargo-watch -- cargo clippy -- -W clippy::all -W clippy::cargo' ;;
+  fmt) echo 'cargo-watch -- cargo fmt' ;;
+  hack) echo 'cargo-watch -- cargo hack check --feature-powerset' ;;
+  udeps) echo 'cargo-watch -- cargo +nightly udeps' ;;
+  audit) echo 'cargo-watch -- cargo audit' ;;
+  deny) echo 'cargo-watch -- cargo deny check' ;;
+  outdated) echo 'cargo-watch -- cargo outdated' ;;
+  flamegraph) echo 'cargo-watch -- cargo flamegraph' ;;
+  *) echo '' ;;
+  esac
+}
+
+status() {
+  local green=$(tput setaf 2)
+  local red=$(tput setaf 1)
+  local reset=$(tput sgr0)
+
+  echo
+  ok_msg "Etats des services"
+  echo
+
+  # En-tête du tableau
+  printf "╭────────────┬─────────┬────────────┬──────────────────────────────────────────┬──────────╮\n"
+  printf "│ %-10s │ %-8s│ %-10s │ %-40s │ %-8s │\n" "Service" "Status" "Backend" "URL" "Uptime"
+  printf "├────────────┼─────────┼────────────┼──────────────────────────────────────────┼──────────┤\n"
+
+  for name in "${!tools[@]}"; do
+    local port="${tools[$name]}"
+    local url="http://localhost:$port"
+    local backend="–"
+    local status_text="${red}stopped${reset}"
+    local uptime="–"
+
+    if tmux has-session -t "$name" 2>/dev/null; then
+      backend="tmux"
+      local pid=$(pgrep -f "tmux.*new.*-s $name")
+      [[ -n "$pid" ]] && uptime=$(ps -o etime= -p "$pid" | xargs)
+      status_text="${green}started${reset}"
+    elif screen -list | grep -q "\.${name}[[:space:]]"; then
+      backend="screen"
+      local pid=$(pgrep -f "SCREEN -S $name")
+      [[ -n "$pid" ]] && uptime=$(ps -o etime= -p "$pid" | xargs)
+      status_text="${green}started${reset}"
+    elif [[ "$name" == "ungit" ]]; then
+      if pgrep -f "ungit --port $port" >/dev/null; then
+        backend="ungit"
+        local pid=$(pgrep -f "ungit --port $port")
+        [[ -n "$pid" ]] && uptime=$(ps -o etime= -p "$pid" | xargs)
+        status_text="${green}started${reset}"
+      fi
+    fi
+
+    printf "│ %-10s │ %-8s │ %-10s │ %-40s │ %-8s │\n" \
+      "$name" "$status_text" "$backend" "$url" "${uptime:--}"
+  done
+  # Pied du tableau
+  printf "╰────────────┴─────────┴────────────┴──────────────────────────────────────────┴──────────╯\n"
+  echo
+}
+
+start_group() {
+  local group=("$@")
+  for name in "${group[@]}"; do
+    local port="${tools[$name]}"
+    local cmd=$(get_cargo_command "$name")
+
+    if [[ "$name" == "ungit" ]]; then
+      ok_msg "Démarrage de ungit sur port $port"
+      nohup ungit --port "$port" >/dev/null 2>&1 &
+      echo $! >>"$TTYD_PID_FILE"
+    elif [[ -n "$cmd" && -n "$port" ]]; then
+      run_session "$name" "$cmd"
+      launch_ttyd "$name" "$port"
+    else
+      ko_msg "Outil '$name' ignoré (commande ou port manquant)"
+    fi
+  done
+}
+
+restart_group() {
+  stop_sessions
+  start_group "$@"
+  echo
+  echo
+}
+
+# === Définition des groupes ===
+group_test=(test clippy hack udeps)
+group_audit=(audit deny)
+group_deps=(outdated)
+group_perf=(flamegraph)
+group_doc=(doc fmt)
+group_vcs=(lazygit ungit)
+
+# === Traitement des arguments ===
+ARGS=()
+while [[ "$1" != "" ]]; do
+  case "$1" in
+  --tmux) SESSION_BACKEND="tmux" ;;
+  --screen) SESSION_BACKEND="screen" ;;
+  --broot) EDIT="broot" ;;
+  --ranger) EDIT="ranger" ;;
+  --code) EDIT="code" ;;
+  *) ARGS+=("$1") ;;
+  esac
+  shift
+done
+
+ACTION="${ARGS[0]}"
+TARGET="${ARGS[1]}"
+
+case "$EDIT" in
+broot)
+  ok_msg "broot ok"
+  ;;
+ranger)
+  ok_msg "ranger ok"
+  ;;
+code)
+  ok_msg "code ok"
+  ;;
+"" | *)
+  ok_msg "editor no set"
+  ;;
+esac
+case "$ACTION" in
+--attach)
+  if [[ -z "$TARGET" ]]; then
+    ko_msg "Veuillez spécifier un outil à attacher (ex: test, clippy...)"
+    exit 1
+  fi
+  attach_session "$TARGET"
+  ;;
+--status) status ;;
+--test) start_group "${group_test[@]}" ;;
+--audit) start_group "${group_audit[@]}" ;;
+--deps) start_group "${group_deps[@]}" ;;
+--perfs) start_group "${group_perf[@]}" ;;
+--doc) start_group "${group_doc[@]}" ;;
+--vcs) start_group "${group_vcs[@]}" ;;
+--all | "") start_group "${!tools[@]}" ;;
+--restart)
+  case "$TARGET" in
+  test) restart_group "${group_test[@]}" ;;
+  audit) restart_group "${group_audit[@]}" ;;
+  deps) restart_group "${group_deps[@]}" ;;
+  perfs) restart_group "${group_perf[@]}" ;;
+  doc) restart_group "${group_doc[@]}" ;;
+  vcs) restart_group "${group_vcs[@]}" ;;
+  all | "") restart_group "${!tools[@]}" ;;
+  *) ko_msg "Groupe inconnu : $TARGET" && exit 1 ;;
+  esac
+  ;;
+--stop) stop_sessions ;;
+--clean) >"$TTYD_PID_FILE" && stop_sessions ;;
+*)
+  ko_msg "Argument inconnu : $ACTION"
+  ko_msg "Utilisation : $0 [--test|--audit|--deps|--perfs|--doc|--vcs|--all|--restart groupe|--stop|--clean] [--tmux|--screen]"
+  exit 1
+  ;;
+esac
+
+if [ -n "$EDIT" ]; then
+  $EDIT
+fi
