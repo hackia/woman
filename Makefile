@@ -12,7 +12,7 @@ all:
 	@echo "Nothing to build. Ready to install."
 
 man:
-	@gzip -kf woman.1 && echo "* woman.1.gz generated"
+	@gzip -kf $(TARGET).1 && echo "* $(TARGET).1.gz generated"
 
 check:
 	@echo "Running bash syntax check..."
@@ -20,15 +20,17 @@ check:
 	Eyy
 	Eyy
 install: man
-	@install -Dm644 woman.1.gz $(DESTDIR)$(MAN_DIR)/woman.1.gz && echo "* man page installed"
-	@install -Dm644 woman.1 $(DESTDIR)$(MAN_DIR)/woman.1
+	@install -Dm644 $(TARGET).bash $(DESTDIR)$(BASH_COMPLETION_DIR)
+	@install -Dm644 $(TARGET).1.gz $(DESTDIR)$(MAN_DIR)/$(TARGET).1.gz && echo "* man page installed"
+	@install -Dm644 $(TARGET).1 $(DESTDIR)$(MAN_DIR)/$(TARGET).1
 	@echo "* installing $(TARGET) to $(BINDIR)"
 	@install -Dm755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(TARGET)
 	@test -x $(BINDIR)/$(TARGET) &&	echo "* $(TARGET) is installed successfully"
 	@test -d $(FISH_COMPLETION_DIR)  && echo "* install fish completions" && install -Dm644 $(TARGET).fish $(DESTDIR)$(FISH_COMPLETION_DIR)/$(TARGET).fish && test -f $(FISH_COMPLETION_DIR)/$(TARGET).fish && echo "* fish completion ready to use"
 	@test -d $(ZSH_COMPLETION_DIR)  && echo "* install zsh completions" && install -Dm644 _$(TARGET) $(DESTDIR)/$(ZSH_COMPLETION_DIR)/_$(TARGET) && test -f $(ZSH_COMPLETION_DIR)/_$(TARGET) && echo "* zsh completion ready to use"
 uninstall:
-	@rm -f $(DESTDIR)$(MAN_DIR)/woman.1.gz && echo "* man page removed"
+	@rm -f $(PREFIX)/share/bash-completion/completions/$(TARGET).bash && echo "* bash completion removed"
+	@rm -f $(DESTDIR)$(MAN_DIR)/$(TARGET).1.gz && echo "* man page removed"
 	@echo "* uninstalling $(TARGET) to $(BINDIR)"
 	@rm -f $(PREFIX)/bin/$(TARGET)
 	@test ! -x $(BINDIR)/$(TARGET)  && echo "* $(TARGET) is uninstalled successfully"
