@@ -1,5 +1,70 @@
 #!/usr/bin/env bash
 
+print_help() {
+  local green=$(tput setaf 2)
+  local white=$(tput setaf 7)
+  local bold=$(tput bold)
+  local reset=$(tput sgr0)
+
+  echo
+  echo "${bold}Usage:${reset}"
+  echo
+  echo "  woman [OPTIONS]"
+  echo
+  echo "${bold}Description:${reset}"
+  echo
+  echo "  A lightweight live dev environment orchestrator using ${green}screen${reset}/${green}tmux${reset} and web access via ${green}ttyd${reset}."
+  echo "  Easily launch, stop and monitor dev tool sessions."
+  echo
+  echo "${bold}Main actions:${reset}"
+  echo
+  echo "  ${white}--status${reset}         Show the status of all tool sessions"
+  echo "  ${white}--attach${reset}         Attach to a running session"
+  echo "  ${white}--test${reset}           Run testing tools"
+  echo "  ${white}--audit${reset}          Run auditing tools"
+  echo "  ${white}--udeps${reset}          Check unused dependencies"
+  echo "  ${white}--perf${reset}           Launch performance tools"
+  echo "  ${white}--deps${reset}           Verify dependencies"
+  echo "  ${white}--doc${reset}            Generate documentation"
+  echo "  ${white}--vcs${reset}            Run versioning tools (Git, etc.)"
+  echo "  ${white}--all${reset}            Launch all tools"
+  echo "  ${white}--restart${reset}        Restart a group of tools"
+  echo "  ${white}--stop${reset}           Stop all sessions"
+  echo "  ${white}--clean${reset}          Clean all session state"
+  echo
+  echo "${bold}Backends (for --attach)${reset}"
+  echo
+  echo "  tmux              Use tmux backend"
+  echo "  screen            Use screen backend"
+  echo
+  echo "${bold}Groups (for --restart)${reset}"
+  echo
+  echo "  test, audit, deps, doc, perf, vcs, all"
+  echo
+  echo "${bold}Visual editors (optional)${reset}"
+  echo
+  echo "  broot             Launch broot at the end"
+  echo "  ranger            Launch ranger at the end"
+  echo "  code              Launch VS Code at the end"
+  echo
+  echo "${bold}Completions${reset}"
+  echo
+  echo "  Auto-installed for ${green}bash${reset}, ${green}fish${reset}, and ${green}zsh${reset}"
+  echo
+  echo "${bold}Examples:${reset}"
+  echo
+  echo "  woman --status"
+  echo "  woman --attach test"
+  echo "  woman --restart audit"
+  echo "  woman --all"
+  echo
+}
+
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  print_help
+  exit 0
+fi
+
 if [ ! -f Cargo.toml ]; then
   echo "run cargo init first"
   exit 1
