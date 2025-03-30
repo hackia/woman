@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 
-if [ ! -f Cargo.toml ]
-then
+if [ ! -f Cargo.toml ]; then
   echo "run cargo init first"
-  exit 1 
+  exit 1
 fi
 clear
 TTYD_PID_FILE=".ttyd_pids"
@@ -230,32 +229,34 @@ status() {
   for name in "${!tools[@]}"; do
     local port="${tools[$name]}"
     local url="http://localhost:$port"
-    local backend="–"
+    local backend="none"
     local status_text="${red}stopped${reset}"
-    local uptime="–"
+    local uptime="none"
 
     if tmux has-session -t "$name" 2>/dev/null; then
       backend="tmux"
-      local pid=$(pgrep -f "tmux.*new.*-s $name")
+      local pid=$(pgrep -f "tmux.*new.*-s $name" | head -n 1)
       [[ -n "$pid" ]] && uptime=$(ps -o etime= -p "$pid" | xargs)
       status_text="${green}started${reset}"
     elif screen -list | grep -q "\.${name}[[:space:]]"; then
       backend="screen"
-      local pid=$(pgrep -f "SCREEN -S $name")
+      local pid=$(pgrep -f "SCREEN -S $name" | head -n 1)
       [[ -n "$pid" ]] && uptime=$(ps -o etime= -p "$pid" | xargs)
       status_text="${green}started${reset}"
     elif [[ "$name" == "ungit" ]]; then
       if pgrep -f "ungit --port $port" >/dev/null; then
         backend="ungit"
-        local pid=$(pgrep -f "ungit --port $port")
+        local pid=$(pgrep -f "ungit --port $port" | head -n 1)
         [[ -n "$pid" ]] && uptime=$(ps -o etime= -p "$pid" | xargs)
         status_text="${green}started${reset}"
       fi
     fi
 
+    # Affichage
     printf "│ %-10s │ %-8s │ %-10s │ %-40s │ %-8s │\n" \
-      "$name" "$status_text" "$backend" "$url" "${uptime:--}"
+      "$name" "$status_text" "$backend" "$url" "$uptime"
   done
+
   # Pied du tableau
   printf "╰────────────┴─────────┴────────────┴──────────────────────────────────────────┴──────────╯\n"
   echo
