@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+if [ ! -f Cargo.toml ]
+then
+  echo "run cargo init first"
+  exit 1 
+fi
 clear
 TTYD_PID_FILE=".ttyd_pids"
 
