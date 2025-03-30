@@ -1,0 +1,71 @@
+.TH WOMAN 1 "March 2025" "v0.0.1" "User Commands"
+.SH NAME
+woman \- Live Rust Dev Environment launcher with screen/tmux and ttyd
+.SH SYNOPSIS
+.B woman
+[\fIOPTION\fR] [\fIGROUP\fR]
+.SH DESCRIPTION
+.B woman
+is a script to launch a full Rust development environment with multiple tools, 
+monitored through screen or tmux sessions and accessible via ttyd.
+
+Each tool runs in its own session and can be monitored live in your browser.
+
+.SH OPTIONS
+.TP
+\fB--status\fR
+Show the status of all running services.
+.TP
+\fB--attach \fISERVICE\fR
+Attach to a specific session (e.g., \fBwoman --attach test\fR).
+.TP
+\fB--test\fR, \fB--audit\fR, \fB--deps\fR, \fB--doc\fR, \fB--vcs\fR
+Start grouped sets of tools.
+.TP
+\fB--all\fR
+Start all available tools.
+.TP
+\fB--restart \fIGROUP\fR
+Stop and restart the specified group.
+.TP
+\fB--stop\fR
+Stop all running sessions.
+.TP
+\fB--clean\fR
+Clean ttyd PIDs and stop sessions.
+.TP
+\fB--tmux\fR
+Use tmux instead of screen.
+.TP
+\fB--screen\fR
+Use screen instead of tmux.
+.TP
+\fB--broot\fR, \fB--ranger\fR, \fB--code\fR
+Launch the specified editor after running.
+
+.SH EXAMPLES
+.TP
+\fBwoman --test --tmux\fR
+Start test-related tools using tmux.
+.TP
+\fBwoman --status\fR
+View running services.
+
+.SH FILES
+.TP
+.B ~/.ttyd_pids
+PID file for ttyd processes.
+
+.SH AUTHOR
+Written by Hackia.
+
+.SH HOMEPAGE
+https://github.com/hackia/woman
+
+.SH SEE ALSO
+.BR cargo (1),
+.BR screen (1),
+.BR tmux (1),
+.BR ttyd (1)
+
+
