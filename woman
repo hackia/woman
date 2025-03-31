@@ -17,10 +17,6 @@ l | language)
   select_lang "$2"
   ;;
 
-list)
-  woman_list
-  ;;
-
 status)
   woman_debug_all
   ;;
@@ -28,7 +24,22 @@ status)
 run)
   woman_run "$2"
   ;;
-
+url)
+  case "$2" in
+  add) woman_url_add "$3" "$4" ;;
+  update) woman_url_update "$3" "$4" ;;
+  rm) woman_url_rm "$3" ;;
+  list) woman_url_list ;;
+  get) woman_url_get "$3" ;;
+  *) echo "Utilisation : woman url [add|update|rm|get|list] <outil> [url]" ;;
+  esac
+  ;;
+stop)
+  stop_sessions
+  ;;
+start)
+  start_group "$@"
+  ;;
 help | --help | -h | "")
   echo
   echo

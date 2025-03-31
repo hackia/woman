@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+declare -gA urls=()
+
 declare -x WOMAN_GROUP_TESTS=(test)
 declare -x WOMAN_GROUP_DEPS=(outdated unused graph)
 declare -x WOMAN_GROUP_AUDIT=(lint audit deny)
@@ -110,15 +113,110 @@ attach_session() {
         fi
     fi
 }
-woman_list() {
+
+woman_url_add() {
+    local tool="$1"
+    local url="$2"
+    local file="$HOME/.config/woman/urls.conf"
+
+    if [[ -z "$tool" || -z "$url" ]]; then
+        ko_msg "Utilisation : woman url add <outil> <url>"
+        return 1
+    fi
+
+    if grep -q "^$tool=" "$file" 2>/dev/null; then
+        ko_msg "L’outil '$tool' existe déjà dans la config"
+        return 1
+    fi
     echo
-    ok_msg "Liste des outils disponibles :"
     echo
-    local green=$(tput setaf 2)
-    local reset=$(tput sgr0)
-    for name in "${!tools[@]}"; do
-        printf "${green}*$reset %-12s → http://localhost:%s\n" "$name" "${tools[$name]}"
-    done
+    ok_msg "$tool=$url" >>"$file"
+    ok_msg "Ajouté : $tool → $url"
+    echo
+    echo
+}
+
+woman_url_set() {
+    local tool="$1"
+    local url="$2"
+    local file="$HOME/.config/woman/urls.conf"
+
+    if [[ -z "$tool" || -z "$url" ]]; then
+        ko_msg "Utilisation : woman url set <outil> <url>"
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$file")"
+
+    if grep -q "^$tool=" "$file" 2>/dev/null; then
+        # Modifier l’entrée existante
+        sed -i "s|^$tool=.*|$tool=$url|" "$file"
+        ok_msg "URL mise à jour pour '$tool'"
+    else
+        # Ajouter nouvelle entrée
+        echo "$tool=$url" >>"$file"
+        ok_msg "URL ajoutée pour '$tool'"
+    fi
+    echo
+    echo
+}
+woman_url_update() {
+    local tool="$1"
+    local url="$2"
+    local file="$HOME/.config/woman/urls.conf"
+
+    if [[ -z "$tool" || -z "$url" ]]; then
+        ko_msg "Utilisation : woman url update <outil> <url>"
+        return 1
+    fi
+
+    if grep -q "^$tool=" "$file" 2>/dev/null; then
+        sed -i "s|^$tool=.*|$tool=$url|" "$file"
+        ok_msg "Mise à jour : $tool → $url"
+    else
+        ko_msg "L’outil '$tool' n'existe pas"
+        return 1
+    fi
+}
+woman_url_rm() {
+    local tool="$1"
+    local file="$HOME/.config/woman/urls.conf"
+
+    if [[ -z "$tool" ]]; then
+        ko_msg "Utilisation : woman url rm <outil>"
+        return 1
+    fi
+
+    if grep -q "^$tool=" "$file" 2>/dev/null; then
+        grep -v "^$tool=" "$file" >"$file.tmp" && mv "$file.tmp" "$file"
+        ok_msg "Supprimé : $tool"
+    else
+        ko_msg "Aucune entrée pour '$tool'"
+    fi
+}
+woman_url_get() {
+    local tool="$1"
+    local file="$HOME/.config/woman/urls.conf"
+    echo
+    if [[ -z "$tool" ]]; then
+        ko_msg "Utilisation : woman url get <outil>"
+        return 1
+    fi
+    grep "^$tool=" "$file" 2>/dev/null | cut -d= -f2 || ko_msg "Aucune URL définie pour '$tool'"
+    echo
+    echo
+}
+
+woman_url_list() {
+    local file="$HOME/.config/woman/urls.conf"
+    if [[ ! -f "$file" ]]; then
+        ok_msg "Aucune URL définie."
+        return 0
+    fi
+    echo
+    ok_msg "URLs définies :"
+    echo
+    column -t -s '=' "$file"
     echo
     echo
 }
@@ -501,6 +599,16 @@ kill_ungit() {
     else
         ok_msg "aucun processus ungit trouvé"
     fi
+}
+
+woman_load_urls() {
+    local file="$HOME/.config/woman/urls.conf"
+    [[ -f "$file" ]] || return 0
+
+    while IFS='=' read -r key val; do
+        [[ "$key" =~ ^#.*$ || -z "$key" || -z "$val" ]] && continue
+        urls["$key"]="$val"
+    done <"$file"
 }
 
 woman_debug_all() {
