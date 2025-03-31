@@ -1,1 +1,11 @@
 woman.1.gz
+# Fichiers sensibles ou générés
+~/.config/woman/*
+*.gz
+*.bak
+auth.*
+auth.*
+ttyd_pids
+*.tmp
+*.swp
+*.log
