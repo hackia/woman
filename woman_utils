@@ -1,0 +1,579 @@
+#!/usr/bin/env bash
+declare -x WOMAN_GROUP_TESTS=(test)
+declare -x WOMAN_GROUP_DEPS=(outdated unused graph)
+declare -x WOMAN_GROUP_AUDIT=(lint audit deny)
+declare -x WOMAN_GROUP_DOCUMENTATION=(doc format)
+declare -x WOMAN_GROUP_PERFORMANCE=(profiler)
+declare -x WOMAN_GROUP_ANALYSE_STATIC=(unsafe lint analyzer)
+declare -x WOMAN_GROUP_LICENCES=(licenses compliance)
+declare -x WOMAN_GROUP_GIT=(git tui)
+declare -x WOMAN_GROUP_HG=(hg)
+declare -x WOMAN_GROUP_FOSSIL=(fossil)
+declare -x WOMAN_VCS=(fossil mercurial darcs bazaar svn)
+
+declare -x WOMAN_TEST_PORT=1492
+declare -x WOMAN_LINT_PORT=1418
+declare -x WOMAN_DOC_PORT=1939
+declare -x WOMAN_LICENSES_PORT=1618
+declare -x WOMAN_ANALYZER_PORT=1914
+declare -x WOMAN_DENY_PORT=1989
+declare -x WOMAN_TUI_PORT=1973
+declare -x WOMAN_COMPLIANCE_PORT=1618
+declare -x WOMAN_PROFILER_PORT=1861
+declare -x WOMAN_UNIT_PORT=1492
+declare -x WOMAN_UNSAFE_PORT=1914
+
+declare -x WOMAN_GIT_PORT=1973
+declare -x WOMAN_ALT_VCS_PORT=1187
+declare -x WOMAN_TESTS_PORT=1492
+declare -x WOMAN_DEPEDENCIES_PORT=1789
+declare -x WOMAN_OUTDATED_PORT=1453
+declare -x WOMAN_AUDIT_PORT=1989
+declare -x WOMAN_LINTERS_PORT=1418
+declare -x WOMAN_DOCUMENTATION_PORT=1939
+declare -x WOMAN_FORMAT_PORT=1066
+declare -x WOMAN_PERFORMANCE_PORT=1861
+declare -x WOMAN_ANALYSE_STATIC_PORT=1914
+declare -x WOMAN_LICENCES_PORT=1618
+declare -x WOMAN_COVERAGE_PORT=1648
+declare -x WOMAN_MUTATION_PORT=1555
+declare -x WOMAN_SECURITY_PORT=1777
+declare -x WOMAN_CI_PORT=2023
+declare -x WOMAN_BUILD_PORT=1337
+declare -x WOMAN_SECRETS_PORT=1234
+declare -x WOMAN_GRAPH_PORT=1371
+declare -x WOMAN_OUTDATED_PORT=1453
+declare -x WOMAN_FOSSIL_PORT=1187
+declare -x WOMAN_HG_PORT=1191
+declare -x WOMAN_UNUSED_PORT=1331
+
+declare -x TTYD_PID_FILE=".ttyd_pids"
+
+# === Affichage coloré ===
+ok_msg() {
+    local msg="$1"
+    local cols=$(tput cols)
+    local color=$(tput setaf 2)
+    local reset=$(tput sgr0)
+    local padding=$((cols - ${#msg} - 7))
+    printf "$color*$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "ok$reset"
+    sleep 0.1
+}
+
+ok_msg_status() {
+    local msg="$1"
+    local port=$2
+    local cols=$(tput cols)
+    local color=$(tput setaf 2)
+    local reset=$(tput sgr0)
+    local padding=$((cols - ${#msg} - 8))
+    printf "$color~$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "$port$reset"
+    sleep 0.1
+}
+
+ko_msg() {
+    local msg="$1"
+    local cols=$(tput cols)
+    local color=$(tput setaf 1)
+    local reset=$(tput sgr0)
+    local padding=$((cols - ${#msg} - 7))
+    printf "$color!$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "ko$reset"
+    sleep 0.1
+}
+
+ko_msg_status() {
+    local msg="$1"
+    local port=$2
+    local cols=$(tput cols)
+    local color=$(tput setaf 1)
+    local reset=$(tput sgr0)
+    local padding=$((cols - ${#msg} - 8))
+    printf "$color~$reset %s%*s%s%s ]\n" "$msg" "$padding" "[ " "$color" "$port$reset"
+    sleep 0.1
+}
+
+attach_session() {
+    local name="$1"
+    if [ "$SESSION_BACKEND" = "tmux" ]; then
+        if tmux has-session -t "$name" 2>/dev/null; then
+            tmux attach -t "$name"
+        else
+            ko_msg "Session tmux '$name' introuvable"
+            exit 1
+        fi
+    else
+        if screen -list | grep -q "\.${name}[[:space:]]"; then
+            screen -r "$name"
+        else
+            ko_msg "Session screen '$name' introuvable"
+            exit 1
+        fi
+    fi
+}
+woman_list() {
+    echo
+    ok_msg "Liste des outils disponibles :"
+    echo
+    local green=$(tput setaf 2)
+    local reset=$(tput sgr0)
+    for name in "${!tools[@]}"; do
+        printf "${green}*$reset %-12s → http://localhost:%s\n" "$name" "${tools[$name]}"
+    done
+    echo
+    echo
+}
+
+woman_tree_group() {
+    local group="$1"
+    local var="WOMAN_GROUP_${group^^}"
+
+    if [[ -z "${!var}" ]]; then
+        ko_msg "Groupe '$group' introuvable"
+        return 1
+    fi
+
+    echo
+    ok_msg " Groupe : $group"
+    echo
+
+    eval "group_tools=(\"\${${var}[@]}\")"
+    local count=${#group_tools[@]}
+    local i=0
+
+    for tool in "${group_tools[@]}"; do
+        ((i++))
+        local port_var="WOMAN_${tool^^}_PORT"
+        local port="${!port_var}"
+        local branch="├─"
+        [[ $i -eq $count ]] && branch="└─"
+
+        if [[ -n "$port" ]]; then
+            printf " %s %-12s → %s\n" "$branch" "$tool" "$port"
+        else
+            printf " %s %-12s → port manquant\n" "$branch" "$tool"
+        fi
+    done
+}
+
+woman_run() {
+    local name="$1"
+    local port="${tools[$name]}"
+
+    if [[ -z "$port" ]]; then
+        ko_msg "Outil inconnu ou port non défini : '$name'"
+        return 1
+    fi
+
+    local cmd=$(get_tool_command "$name")
+
+    if [[ "$name" == "ungit" ]]; then
+        ok_msg "Démarrage de ungit sur port $port"
+        nohup ungit --port "$port" >/dev/null 2>&1 &
+        echo $! >>"$TTYD_PID_FILE"
+    elif [[ -n "$cmd" ]]; then
+        run_session "$name" "$cmd"
+        launch_ttyd "$name" "$port"
+    else
+        ko_msg "Commande introuvable pour '$name'"
+    fi
+}
+
+select_lang() {
+    local lang="$1"
+    local config="$HOME/.config/woman/$lang/tools.conf"
+
+    if [[ ! -f "$config" ]]; then
+        ko_msg "Aucune configuration trouvée pour le langage '$lang'"
+        return 1
+    fi
+
+    ok_msg "Chargement de la config : $config"
+    . "$config"
+    woman_generate_tools
+}
+
+woman_tree() {
+    clear
+    local green=$(tput setaf 2)
+    local red=$(tput setaf 1)
+    local cyan=$(tput setaf 6)
+    local reset=$(tput sgr0)
+
+    echo
+    echo
+
+    for group_var in ${!WOMAN_GROUP_@}; do
+        group_name="${group_var#WOMAN_GROUP_}"
+        group_label="${group_name,,}" # minuscule
+        printf " %s%s%s\n" "$cyan" "$group_label" "$reset"
+
+        eval "group_tools=(\"\${${group_var}[@]}\")"
+        local count=${#group_tools[@]}
+        local i=0
+
+        for tool in "${group_tools[@]}"; do
+            ((i++))
+            local port_var="WOMAN_${tool^^}_PORT"
+            local port="${!port_var}"
+            local branch="├─"
+            [[ $i -eq $count ]] && branch="└─"
+
+            if [[ -n "$port" ]]; then
+                printf " %s %s%-12s%s → %s%s%s\n" "$branch" "$green" "$tool" "$reset" "$cyan" "$port" "$reset"
+            else
+                printf " %s %s%-12s%s → %s port manquant%s\n" "$branch" "$red" "$tool" "$reset" "$red" "$reset"
+            fi
+        done
+
+        echo
+    done
+    echo
+}
+
+# === Sessions dynamiques (screen ou tmux) ===
+run_session() {
+    local name=$1
+    local cmd=$2
+
+    if [ "$SESSION_BACKEND" = "tmux" ]; then
+        if tmux has-session -t "$name" 2>/dev/null; then
+            ok_msg "Session '$name' déjà en cours. Ignorée."
+        else
+            ok_msg "Démarrage de la session tmux '$name'..."
+            tmux new-session -d -s "$name" "$cmd"
+        fi
+    else
+        if screen -list | grep -q "\.${name}[[:space:]]"; then
+            ok_msg "Session '$name' déjà en cours. Ignorée."
+        else
+            ok_msg "Démarrage de la session screen '$name'..."
+            screen -S "$name" -dm bash -c "$cmd; exec bash"
+        fi
+    fi
+}
+
+start_group() {
+    local group=("$@")
+    for name in "${group[@]}"; do
+        local port="${tools[$name]}"
+        local cmd=$(get_cargo_command "$name")
+
+        if [[ "$name" == "ungit" ]]; then
+            ok_msg "Démarrage de ungit sur port $port"
+            nohup ungit --port "$port" >/dev/null 2>&1 &
+            echo $! >>"$TTYD_PID_FILE"
+        elif [[ -n "$cmd" && -n "$port" ]]; then
+            run_session "$name" "$cmd"
+            launch_ttyd "$name" "$port"
+        else
+            ko_msg "Outil '$name' ignoré (commande ou port manquant)"
+        fi
+    done
+}
+launch_ttyd() {
+    local name=$1
+    local port=$2
+    local attach_cmd
+
+    woman_auth_load
+
+    if [ "$SESSION_BACKEND" = "tmux" ]; then
+        attach_cmd="tmux attach -t $name"
+    else
+        attach_cmd="screen -r $name"
+    fi
+
+    ok_msg "Accès $name protégé : http://localhost:$port"
+    nohup ttyd --credential "$USER:$PASS" -p "$port" $attach_cmd >/dev/null 2>&1 &
+    echo $! >>"$TTYD_PID_FILE"
+}
+
+woman_auth_change() {
+    echo
+    ok_msg "Changement des identifiants"
+    echo
+
+    read -s -p "Nouvel utilisateur : " USER
+    read -s -p "Nouveau mot de passe : " PASS
+    echo
+
+    tmpfile=$(mktemp)
+    echo "USER=$USER" >"$tmpfile"
+    echo "PASS=$PASS" >>"$tmpfile"
+
+    read -p "ID ou email GPG à utiliser : " recipient
+    gpg --encrypt --recipient "$recipient" -o ~/.config/woman/auth.conf.gpg "$tmpfile"
+    rm -f "$tmpfile"
+
+    ok_msg "Identifiants modifiés et fichier GPG mis à jour"
+}
+woman_auth_setup() {
+
+    local green=$(tput setaf 2)
+    local red=$(tput setaf 1)
+    local cyan=$(tput setaf 6)
+    local reset=$(tput sgr0)
+    echo
+    ok_msg "Initialisation de l’authentification chiffrée (GPG)"
+    mkdir -p ~/.config/woman
+
+    echo "MODE=gpg" >~/.config/woman/auth.mode
+    ok_msg "Entrez vos identifiants pour créer le fichier chiffré"
+
+    read -s -p "$green*$reset Utilisateur  : " USER
+    echo
+    read -s -p "$green*$reset Mot de passe : " PASS
+    echo
+    tmpfile=$(mktemp)
+    echo "USER=$USER" >"$tmpfile"
+    echo "PASS=$PASS" >>"$tmpfile"
+    echo
+    ok_msg "Gpg keys list"
+    echo
+    gpg --list-keys
+    echo
+    read -p "$green*$reset Entrez votre ID ou email GPG : " recipient
+    echo
+    gpg --encrypt --recipient "$recipient" -o ~/.config/woman/auth.conf.gpg "$tmpfile"
+    rm -f "$tmpfile"
+    echo
+    ok_msg "Fichier GPG chiffré créé et authentification activée"
+    echo
+}
+
+woman_auth_disable() {
+    local green=$(tput setaf 2)
+    local red=$(tput setaf 1)
+    local cyan=$(tput setaf 6)
+    local reset=$(tput sgr0)
+    echo
+    echo
+    ok_msg "Suppression de l'authentification woman"
+    read -p "$green*$reset Entrez une touche pour continuer ou CTRL+c pour abandonner" x
+    rm -f ~/.config/woman/auth.mode
+    ok_msg "Auth désactivée. Le mode repasse en 'none'"
+    ok_msg "MODE=none" >~/.config/woman/auth.mode
+    echo
+    echo
+}
+
+woman_auth_reinstall() {
+    local green=$(tput setaf 2)
+    local red=$(tput setaf 1)
+    local cyan=$(tput setaf 6)
+    local reset=$(tput sgr0)
+    ok_msg "Réinstallation de l’authentification GPG woman"
+    read -p "$green*$reset Cela supprimera tous les identifiants existants. Continuer ? [y/N] " confirm
+    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && echo "Annulé." && return 1
+
+    # Supprimer les anciens fichiers
+    rm -f ~/.config/woman/auth.conf.gpg
+    rm -f ~/.config/woman/auth.mode
+
+    ok_msg "Création d’un nouveau fichier d’authentification chiffré"
+
+    mkdir -p ~/.config/woman
+    echo "MODE=gpg" >~/.config/woman/auth.mode
+
+    read -s -p "$green*$reset Nouvel utilisateur : " USER
+    echo
+    read -s -p "$green*$reset Nouveau mot de passe : " PASS
+    echo
+
+    tmpfile=$(mktemp)
+    echo "USER=$USER" >"$tmpfile"
+    echo "PASS=$PASS" >>"$tmpfile"
+
+    echo
+    ok_msg "All gpg keys"
+    echo
+    gpg --list-keys
+    echo
+    read -p "Clé GPG à utiliser (email ou ID) : " recipient
+    gpg --encrypt --recipient "$recipient" -o ~/.config/woman/auth.conf.gpg "$tmpfile"
+    rm -f "$tmpfile"
+    echo
+    ok_msg "Fichier GPG recréé et réinstallé"
+    ok_msg ""
+    echo
+}
+
+woman_auth_load() {
+    local enc_file="$HOME/.config/woman/auth.conf.gpg"
+    local tmp_file=$(mktemp)
+
+    if [[ -f "$enc_file" ]]; then
+        if gpg --quiet --decrypt "$enc_file" >"$tmp_file" 2>/dev/null; then
+            source "$tmp_file"
+            rm -f "$tmp_file"
+        else
+            ko_msg "Échec du déchiffrement GPG"
+            USER="admin"
+            PASS="admin"
+        fi
+    else
+        ko_msg "Fichier auth.conf.gpg introuvable"
+    fi
+}
+
+stop_sessions() {
+    ok_msg "Arrêt des sessions..."
+    for name in "${!tools[@]}"; do
+        if tmux has-session -t "$name" 2>/dev/null; then
+            tmux kill-session -t "$name"
+            ok_msg "Session tmux '$name' arrêtée."
+        fi
+        if screen -list | grep -q "\.${name}[[:space:]]"; then
+            screen -S "$name" -X quit
+            ok_msg "Session screen '$name' arrêtée."
+        fi
+    done
+
+    if [[ -f "$TTYD_PID_FILE" ]]; then
+        while read -r pid; do
+            if kill -0 "$pid" 2>/dev/null; then
+                kill "$pid"
+                ok_msg "ttyd PID $pid arrêté."
+            fi
+        done <"$TTYD_PID_FILE"
+        rm -f "$TTYD_PID_FILE"
+    else
+        ko_msg "Aucun fichier PID ttyd trouvé."
+    fi
+
+    kill_ungit
+    echo
+    echo
+}
+
+woman_auth_show() {
+    local mode_file="$HOME/.config/woman/auth.mode"
+    if [[ -f "$mode_file" ]]; then
+        source "$mode_file"
+        echo "Mode d'authentification actuel : $MODE"
+    else
+        echo "Aucun mode défini (par défaut : none)"
+    fi
+}
+
+get_tool_command() {
+    local name="$1"
+
+    case "$name" in
+    # Rust
+    test | unit) echo "cargo test" ;;
+    doc) echo "cargo doc --open" ;;
+    fmt | format) echo "cargo fmt" ;;
+    audit) echo "cargo audit" ;;
+    deny) echo "cargo deny check licenses" ;;
+    clippy | lint) echo "cargo clippy" ;;
+    udeps | unused) echo "cargo +nightly udeps" ;;
+    outdated) echo "cargo outdated" ;;
+    flamegraph | profiler) echo "cargo flamegraph" ;;
+    geiger | unsafe) echo "cargo geiger" ;;
+    analyzer | codeql) echo "codeql database analyze ..." ;; # à adapter
+    licenses | compliance) echo "reuse lint" ;;
+    tui | lazygit | git) echo "lazygit" ;;
+    fossil) echo "fossil ui" ;;
+    hg) echo "hg serve" ;;
+
+    # JS/TS
+    eslint) echo "npx eslint ." ;;
+    prettier) echo "npx prettier --check ." ;;
+
+    # Python
+    pylint) echo "pylint src/" ;;
+    black) echo "black ." ;;
+    pytest) echo "pytest" ;;
+
+    *)
+        echo ""
+        ;;
+    esac
+}
+
+kill_ungit() {
+    local pid
+    pid=$(pgrep -f "ungit --port ${tools[ungit]}")
+    if [[ -n "$pid" ]]; then
+        kill "$pid"
+        ok_msg "ungit arrêté (PID $pid)"
+    else
+        ok_msg "aucun processus ungit trouvé"
+    fi
+}
+
+woman_debug_all() {
+    local green=$(tput setaf 2)
+    local red=$(tput setaf 1)
+    local cyan=$(tput setaf 6)
+    local reset=$(tput sgr0)
+
+    echo
+    ok_msg "État des outils enregistrés"
+    echo
+
+    printf "╭────────────┬────────────┬──────────────────────────────────────────┬───────────╮\n"
+    printf "│ %-10s │ %-10s │ %-40s │ %-8s   │\n" "Outil" "Port" "Commande" "État"
+    printf "├────────────┼────────────┼──────────────────────────────────────────┼───────────┤\n"
+
+    for name in "${!tools[@]}"; do
+        local port="${tools[$name]}"
+        local cmd=$(get_tool_command "$name")
+        [[ -z "$cmd" ]] && cmd="commande inconnue"
+
+        # État de l'outil
+        local status="stopped"
+        if tmux has-session -t "$name" 2>/dev/null || screen -list | grep -q "\.${name}[[:space:]]"; then
+            status="${green}started${reset}"
+        elif [[ "$name" == "ungit" ]]; then
+            if pgrep -f "ungit --port $port" >/dev/null; then
+                status="${green}started${reset}"
+            fi
+        else
+            status="${red}stopped${reset}"
+        fi
+
+        printf "│ %-10s │ %-10s │ %-40s │ %-8b   │\n" "$name" "$port" "$cmd" "$status"
+    done
+
+    printf "╰────────────┴────────────┴──────────────────────────────────────────┴───────────╯\n"
+    echo
+}
+
+# === Détection des binaires requis ===
+require_bin() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        ko_msg "Missing: $1"
+        MISSING=1
+    else
+        ok_msg "$1 ok"
+    fi
+}
+
+woman_generate_tools() {
+    declare -gA tools=()
+
+    for group_var in ${!WOMAN_GROUP_@}; do
+        eval "group_tools=(\"\${${group_var}[@]}\")"
+
+        for tool in "${group_tools[@]}"; do
+            # Générer le nom de la variable de port spécifique à l'outil
+            tool_upper="${tool^^}" # outil → OUTIL
+            port_var="WOMAN_${tool_upper}_PORT"
+            port="${!port_var}"
+
+            if [[ -n "$port" ]]; then
+                tools["$tool"]="$port"
+            else
+                ko_msg "Port manquant pour l’outil '$tool'"
+            fi
+        done
+    done
+}
+
+echo
+echo
+# Check for screen or tmux based on selected backend
+require_bin screen
+require_bin tmux

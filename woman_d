@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+. woman_utils
+
+MISSING=0
+REQUIRED_BIN=(dub dmd dmd ldc gdc dscanner dfmt dcd dfmt ungit)
+
+# === Définition des outils ===
+declare -A tools=(
+    [lazygit]=1492
+    [fmt]=1418
+    [ungit]=1989
+    [doc]=1939
+    [test]=1618
+    [lint]=1789
+    [hack]=1453
+    [udeps]=1066
+    [audit]=1861
+    [deny]=1914
+    [outdated]=1187
+)
+
+group_test=(lint audit test)
+group_deps=(outdated)
+group_audit=(dscanner)
+group_doc=(doc)
+group_fmt=(fmt)
+group_deps=(dcd dlang-ls)
+
+echo
+echo
+for bin in ${REQUIRED_BIN[@]}""; do
+    require_bin "$bin"
+done
+echo
+echo
+if [ "$MISSING" -eq 1 ]; then
+    ko_msg "Installation incomplète. Veuillez installer les outils manquants."
+    echo
+    echo
+    exit 1
+else
+    ok_msg "Tous les outils sont disponibles."
+    echo
+    echo
+fi

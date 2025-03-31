@@ -1,29 +1,10 @@
-# == Main actions ==
-complete -c woman -n '__fish_use_subcommand' -a '--status'  -d "Show service status"
-complete -c woman -n '__fish_use_subcommand' -a '--attach'  -d "Attach to a session"
-complete -c woman -n '__fish_use_subcommand' -a '--test'    -d "Launch test tools"
-complete -c woman -n '__fish_use_subcommand' -a '--audit'   -d "Launch security tools"
-complete -c woman -n '__fish_use_subcommand' -a '--deps'    -d "Check dependencies"
-complete -c woman -n '__fish_use_subcommand' -a '--perfs'   -d "Launch performance tools"
-complete -c woman -n '__fish_use_subcommand' -a '--doc'     -d "Generate documentation"
-complete -c woman -n '__fish_use_subcommand' -a '--vcs'     -d "Git/version control tools"
-complete -c woman -n '__fish_use_subcommand' -a '--all'     -d "Launch all tools"
-complete -c woman -n '__fish_use_subcommand' -a '--restart' -d "Restart a group"
-complete -c woman -n '__fish_use_subcommand' -a '--stop'    -d "Stop all sessions"
-complete -c woman -n '__fish_use_subcommand' -a '--clean'   -d "Clean ttyd and sessions"
+complete -c woman -f
 
-# == Group suggestions after --restart ==
-complete -c woman -n '__fish_seen_subcommand_from --restart' -a "test audit deps perfs doc vcs all" -d "Group to restart"
+set -l action init run status restart attach list
+set -l language rust c d cpp go java kotlin swift typescript javascript python ruby php csharp scala dart objective-c perl bash powershell lua zig nim crystal elixir gleam vale carbon vlang bun scratch logo pascal scheme racket alice processing r julia matlab octave verilog vhdl systemverilog glsl hlsl wgsl metal sql cypher graphql promql influxql coq agda lean isabelle terraform hcl puppet ansible nix html css sass less markdown scss fortran cobol lisp smalltalk ada basic ml ocaml modula-2 delphi brainfuck whitespace malbolge piet wasm asm llvm makefile dockerfile yaml toml ini json csv fish zsh sh awk sed gml godotscript haxe unrealscript tex latex postscript lilypond plantuml
+set -l backend tmux screen
 
-# == Services suggestions after --attach ==
-complete -c woman -n '__fish_seen_subcommand_from --attach' -a "test clippy hack udeps audit deny outdated flamegraph doc fmt lazygit ungit" -d "Session name"
-
-# == Backend options ==
-complete -c woman -l tmux   -d "Use tmux as backend"
-complete -c woman -l screen -d "Use screen as backend"
-
-# == Editor options ==
-complete -c woman -l broot  -d "Launch broot at the end"
-complete -c woman -l ranger -d "Launch ranger at the end"
-complete -c woman -l code   -d "Launch VS Code at the end"
-
+complete -c woman -n "not __fish_seen_subcommand_from init" -a "$language" -d 'init the repo'
+complete -c woman -s b -l backend --no-files -ra "$backend" -d "The backend to use"
+complete -c woman -s a -l action --no-files -ra "$action" -d "The action to run"
+complete -c woman -n "not __fish_seen_subcommand_from status" -d 'Get woman status'
