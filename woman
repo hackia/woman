@@ -12,6 +12,10 @@ tree)
     woman_tree
   fi
   ;;
+ssh)
+  woman_ssh "$2"
+  exit 0
+            ;;
 
 l | language)
   select_lang "$2"

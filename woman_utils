@@ -178,6 +178,52 @@ woman_url_update() {
         return 1
     fi
 }
+
+woman_ssh() {
+    local name="$1"
+
+    if [[ -z "$name" ]]; then
+        ko_msg "Utilisation : woman ssh <outil>"
+        return 1
+    fi
+
+    # 1. Session locale tmux
+    if tmux has-session -t "$name" 2>/dev/null; then
+        ok_msg "Connexion à tmux → $name"
+        tmux attach -t "$name"
+        return
+    fi
+
+    # 2. Session locale screen
+    if screen -list | grep -q "\.${name}[[:space:]]"; then
+        ok_msg "Connexion à screen → $name"
+        screen -r "$name"
+        return
+    fi
+
+    # 3. Conteneur Incus
+    if incus list --format csv | grep -q "^$name,"; then
+        ok_msg "Connexion Incus → $name"
+        incus exec "$name" -- bash
+        return
+    fi
+
+    # 4. Fichier ~/.config/woman/ssh.conf : ports ou hôtes personnalisés
+    local sshconf="$HOME/.config/woman/ssh.conf"
+    if [[ -f "$sshconf" ]]; then
+        local ssh_line
+        ssh_line=$(grep "^$name=" "$sshconf" | cut -d= -f2-)
+        if [[ -n "$ssh_line" ]]; then
+            ok_msg "Connexion SSH via config → $ssh_line"
+            ssh $ssh_line
+            return
+        fi
+    fi
+
+    # Aucun chemin trouvé
+    ko_msg "Aucun accès trouvé pour l'outil '$name'"
+}
+
 woman_url_rm() {
     local tool="$1"
     local file="$HOME/.config/woman/urls.conf"
