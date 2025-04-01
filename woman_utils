@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 declare -gA urls=()
-
+REMOTE_CONF="$HOME/.config/woman/remotes.conf"
 declare -x WOMAN_GROUP_TESTS=(test)
 declare -x WOMAN_GROUP_DEPS=(outdated unused graph)
 declare -x WOMAN_GROUP_AUDIT=(lint audit deny)
@@ -590,13 +590,148 @@ stop_sessions() {
     echo
 }
 
+# Parser INI simple
+get_remote_value() {
+    local remote="$1"
+    local key="$2"
+    awk -v section="[$remote]" -v key="$key" '
+    $0 == section { in_section = 1; next }
+    /^\[.*\]/ { in_section = 0 }
+    in_section && $1 == key { sub(/^.*= /, "", $0); print $0; exit }
+    ' "$REMOTE_CONF"
+}
+
+woman_remote_list() {
+    echo
+    echo
+    printf "╭────────────┬────────────────────────────┬────────────────────╮\n"
+    printf "│ %-10s │ %-26s │ %-18s │\n" "Remote" "SSH" "Tags"
+    printf "├────────────┼────────────────────────────┼────────────────────┤\n"
+
+    awk '/^\[.*\]/ { gsub(/\[|\]/, "", $1); print $1 }' "$REMOTE_CONF" |
+        while read -r remote; do
+            ssh_target=$(get_remote_value "$remote" ssh)
+            tags=$(get_remote_value "$remote" tags | tr -d '[]')
+            printf "│ %-10s │ %-26s │ %-18s │\n" "$remote" "$ssh_target" "$tags"
+        done
+    printf "╰────────────┴────────────────────────────┴────────────────────╯\n"
+    echo
+    echo
+}
+
+woman_remote_add() {
+    local name="$1"
+    local ssh_target="$2"
+    local tags="${3:-default}"
+    local root="${4:-\$HOME/projects}"
+
+    if [[ -z "$name" || -z "$ssh_target" ]]; then
+        echo "Usage : woman remote add <name> <ssh> [tags] [root]"
+        return 1
+    fi
+
+    mkdir -p "$HOME/.config/woman"
+
+    local conf_file="$HOME/.config/woman/remotes.conf"
+
+    # Vérifie si le remote existe déjà
+    if grep -q "^\[$name\]" "$conf_file" 2>/dev/null; then
+        ko_msg " Remote '$name' existe déjà."
+        return 1
+    fi
+
+    # Ajoute le bloc au fichier
+    {
+        echo ""
+        echo "[$name]"
+        echo "ssh = $ssh_target"
+        echo "type = ssh"
+        echo "tags = [$tags]"
+        echo "root = $root"
+    } >>"$conf_file"
+
+    echo
+    ok_msg " Remote '$name' ajouté avec succès."
+    echo
+}
+
+woman_remote_sync() {
+    local name="$1"
+    local ssh_target=$(get_remote_value "$name" ssh)
+    local root=$(get_remote_value "$name" root)
+    local local_path=$(pwd)
+
+    if [[ -z "$ssh_target" || -z "$root" ]]; then
+        ko_msg "Remote '$name' invalide ou non trouvé."
+        return 1
+    fi
+
+    echo
+    ok_msg "Synchronisation locale → $name:$root"
+    echo
+    rsync -avz --delete --exclude=".git" "$local_path/" "$ssh_target:$root/"
+    echo
+    ok_msg "Synchronisation réussie."
+    echo
+}
+
+woman_remote_check() {
+    local name="$1"
+    local ssh_target
+    ssh_target=$(get_remote_value "$name" ssh)
+
+    echo
+    ok_msg "Connexion à $name..."
+    echo
+
+    if ssh -o ConnectTimeout=3 "$ssh_target" "echo ok" 2>/dev/null; then
+        echo
+        ok_msg "Connexion à $name reussie..."
+        echo
+    else
+        echo
+        ko_msg "Connexion à $name echoué..."
+        echo
+    fi
+}
+
+woman_remote_edit() {
+    local name="$1"
+    local conf_file="$HOME/.config/woman/remotes.conf"
+
+    if [[ -z "$name" ]]; then
+        echo "Usage : woman remote edit <name>"
+        return 1
+    fi
+
+    if ! grep -q "^\[$name\]" "$conf_file"; then
+        echo "Remote '$name' non trouvé."
+        return 1
+    fi
+
+    ${EDITOR:-nano} "$conf_file"
+}
+
+woman_remote_run() {
+    local name="$1"
+    shift
+    local cmd="$*"
+    local ssh_target=$(get_remote_value "$name" ssh)
+    local root=$(get_remote_value "$name" root)
+
+    echo
+    ok_msg "Exécution sur $name → $cmd"
+    echo
+    ssh "$ssh_target" "cd \"$root\" && $cmd"
+}
+
 woman_auth_show() {
     local mode_file="$HOME/.config/woman/auth.mode"
     if [[ -f "$mode_file" ]]; then
         source "$mode_file"
-        echo "Mode d'authentification actuel : $MODE"
+        ok_msg "Mode d'authentification actuel : $MODE"
     else
-        echo "Aucun mode défini (par défaut : none)"
+        ok_msg "Aucun mode défini (par défaut : none)"
     fi
 }
 

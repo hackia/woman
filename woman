@@ -15,7 +15,7 @@ tree)
 ssh)
   woman_ssh "$2"
   exit 0
-            ;;
+  ;;
 
 l | language)
   select_lang "$2"
@@ -58,6 +58,31 @@ help | --help | -h | "")
   echo "  woman auth [setup|change|show|disable]           → Affiche le status des outils"
   echo
   echo
+  ;;
+remote)
+  subcmd="$2"
+  case "$subcmd" in
+  sync) woman_remote_sync "$3" ;;
+  pull) woman_remote_pull "$3" ;;
+  push) woman_remote_push "$3" ;;
+  edit) woman_remote_edit "$3" ;;
+  list) woman_remote_list ;;
+  check) woman_remote_check "$3" ;;
+  run) woman_remote_run "$3" "${@:4}" ;;
+  add) woman_remote_add "$3" "$4" "$5" "$6" ;;
+  *)
+    echo
+    echo
+    ok_msg "  woman remote list"
+    ok_msg "  woman remote sync"
+    ok_msg "  woman remote check <name>"
+    ok_msg "  woman remote run <name> <cmd>"
+    ok_msg "  woman remote add <name> <ssh> [tags] [root]"
+    echo
+    echo
+    ;;
+  esac
+  exit 0
   ;;
 auth)
   case "$2" in
