@@ -9,3 +9,8 @@ ttyd_pids
 *.tmp
 *.swp
 *.log
+
+
+# Added by cargo
+
+/target
